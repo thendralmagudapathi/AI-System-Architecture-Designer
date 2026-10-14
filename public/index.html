@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI System Architecture Designer</title>
+  <meta name="description" content="Assemble LLMs, vector databases, retrievers, rerankers, APIs, caches, GPU servers and monitoring into an AI system. See data flow, dependencies and bottlenecks, and export Mermaid or SVG." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Ccircle cx='9' cy='10' r='3' fill='white'/%3E%3Ccircle cx='23' cy='10' r='3' fill='white'/%3E%3Ccircle cx='16' cy='23' r='3' fill='white'/%3E%3Cpath d='M9 10L23 10M9 10L16 23M23 10L16 23' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#designer">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2563eb"/><circle cx="9" cy="10" r="3" fill="#fff"/><circle cx="23" cy="10" r="3" fill="#fff"/><circle cx="16" cy="23" r="3" fill="#fff"/><path d="M9 10L23 10M9 10L16 23M23 10L16 23" stroke="#fff" stroke-width="1.6"/></svg>
+      <span>AI System Architecture Designer</span>
+    </a>
+    <nav>
+      <a href="#designer">Designer</a>
+      <a href="#about">What is this tool for?</a>
+      <a href="#howto">How to use this tool</a>
+      <a href="#model">How the analysis works</a>
+    </nav>
+  </header>
+
+  <!-- ================= DESIGNER ================= -->
+  <section id="designer" class="app">
+    <aside class="palette">
+      <div class="panel-head">
+        <h2 data-tip="The building blocks of an AI system.&#10;Drag one onto the canvas, or click it to add it to the middle of the view.&#10;Hover any item to see what it does.">Components</h2>
+        <p class="muted small">Drag onto the canvas, or click to add.</p>
+      </div>
+      <input id="palette-search" class="search" type="search" placeholder="Search components…" aria-label="Search components" />
+      <div id="palette-list" class="palette-list"></div>
+      <div class="legend">
+        <h3 data-tip="An arrow from A to B means: A sends requests or data to B.&#10;Click an arrow on the canvas to change its type.">Connection types</h3>
+        <div class="legend-row" data-tip="Synchronous call (solid line)&#10;The sender waits for the answer, so the time of this call is added to how long the user waits.&#10;Example: Retriever asks the Vector DB for documents and waits for them.&#10;Carries traffic: yes · Adds waiting time: yes"><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#94a3b8" stroke-width="2.5"/></svg> Synchronous call</div>
+        <div class="legend-row" data-tip="Async / event (dashed line)&#10;The sender does not wait, like posting a letter. Used for queues and background jobs.&#10;The receiver still has to do the work (it uses its capacity), but the user does not wait for it.&#10;Carries traffic: yes · Adds waiting time: no"><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#94a3b8" stroke-width="2.5" stroke-dasharray="7 5"/></svg> Async / event</div>
+        <div class="legend-row" data-tip="Telemetry (pink dotted line)&#10;Logs, metrics and traces sent to a Monitoring box so you can see what is happening.&#10;It is not part of the request from the user.&#10;Carries traffic: no · Adds waiting time: no"><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#f472b6" stroke-width="2" stroke-dasharray="2 4"/></svg> Telemetry</div>
+        <div class="legend-row" data-tip="Purple = the slowest chain of waiting calls from the user to the end.&#10;Its total time is how long the user waits. Speed up these boxes to get faster answers."><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#7c3aed" stroke-width="3.5"/></svg> Critical (slowest) path</div>
+        <div class="legend-row" data-tip="Red = this arrow goes into a box that gets more requests than it can handle (over 100% busy).&#10;Fix it by adding replicas to that box or putting a cache in front of it."><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#dc2626" stroke-width="3"/></svg> Into an overloaded node</div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="toolbar">
+        <select id="template-select" aria-label="Load a template" data-tip="Load a ready-made example design. It replaces what is on the canvas (you can undo).">
+          <option value="">Templates…</option>
+          <option value="rag">RAG chatbot</option>
+          <option value="agent">Tool-using agent</option>
+          <option value="simple">Load-balanced LLM API</option>
+          <option value="ingest">Document ingestion pipeline</option>
+          <option value="blank">Blank canvas</option>
+        </select>
+        <label class="rps" data-tip="How many requests per second (rps) come into the system from your users.&#10;Change it to see which parts get overloaded as traffic grows.">
+          Traffic <input id="rps-input" type="number" min="0" step="any" /> rps
+        </label>
+        <span class="sep"></span>
+        <label class="toggle" data-tip="Show moving dots on the arrows so you can see the direction of data. Busier arrows move faster."><input type="checkbox" id="tg-flow" checked /> Animate flow</label>
+        <label class="toggle" data-tip="Colour the slowest chain of waiting calls purple. That chain decides how long the user waits."><input type="checkbox" id="tg-critical" checked /> Critical path</label>
+        <label class="toggle" data-tip="When you click a box, fade out everything that is not connected to it, so you can see what it depends on and what depends on it."><input type="checkbox" id="tg-focus" checked /> Focus dependencies</label>
+        <span class="sep"></span>
+        <button id="btn-layout" data-tip="Tidy up the diagram: place boxes in order of how data flows, from left to right.">Auto-layout</button>
+        <button id="btn-undo" data-tip="Undo the last change (Ctrl + Z).">Undo</button>
+        <button id="btn-redo" data-tip="Redo the change you just undid (Ctrl + Y).">Redo</button>
+        <span class="spacer"></span>
+        <button id="btn-mermaid" class="primary" data-tip="Get the diagram as Mermaid code: text you can paste into GitHub, GitLab, Notion or Confluence, where it is drawn as a diagram.">Export Mermaid</button>
+        <button id="btn-svg" class="primary" data-tip="Download the diagram as an SVG image, which stays sharp at any size. Good for slides and documents.">Export SVG</button>
+        <button id="btn-save" data-tip="Download your design as a .json file so you can open and edit it again later or share it.">Save</button>
+        <button id="btn-open" data-tip="Open a .json design file you saved before.">Open</button>
+        <button id="btn-clear" class="danger-ghost" data-tip="Remove all boxes and arrows (you can undo).">Clear</button>
+        <input id="file-input" type="file" accept=".json,application/json" hidden />
+      </div>
+      <div class="canvas-wrap" id="canvas-wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="empty-hint" id="empty-hint">
+          <h3>Start your architecture</h3>
+          <p>Drag components from the left, or pick a template above.</p>
+        </div>
+        <div class="zoom-ctrls">
+          <button id="zoom-out" data-tip="Zoom out (or scroll the mouse wheel).">−</button>
+          <span id="zoom-label" data-tip="Current zoom level. Drag the empty background to move around.">100%</span>
+          <button id="zoom-in" data-tip="Zoom in (or scroll the mouse wheel).">+</button>
+          <button id="zoom-fit" data-tip="Fit the whole diagram on screen (shortcut: F).">Fit</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="side">
+      <section id="inspector" class="panel"></section>
+      <section id="analysis" class="panel"></section>
+    </aside>
+  </section>
+
+  <!-- ================= DOCS ================= -->
+  <section id="about" class="docs">
+    <div class="docs-inner">
+      <h2>What is this tool for?</h2>
+      <p class="lead">
+        AI System Architecture Designer is a visual whiteboard for <strong>planning production AI systems</strong> —
+        RAG chatbots, agents, LLM APIs and ingestion pipelines. Instead of a static drawing, every box carries
+        capacity, latency, replica and cost numbers, so the diagram can tell you <em>where the system will break</em>
+        before you build it.
+      </p>
+      <div class="cards">
+        <div class="card"><div class="card-icon" style="background:#2563eb">1</div><h3>Assemble components</h3><p>Combine an LLM, vector database, retriever, reranker, embedding model, API gateway, cache, queue, GPU server, guardrails and monitoring into one picture.</p></div>
+        <div class="card"><div class="card-icon" style="background:#0d9488">2</div><h3>See the data flow</h3><p>Connections show what calls what, how many requests per second travel along each link, and whether the call is synchronous, async or telemetry.</p></div>
+        <div class="card"><div class="card-icon" style="background:#dc2626">3</div><h3>Find bottlenecks</h3><p>Traffic is propagated through the graph. Components above 75% utilisation turn amber, above 100% turn red, and the tool tells you how many replicas would fix it.</p></div>
+        <div class="card"><div class="card-icon" style="background:#7c3aed">4</div><h3>Understand dependencies</h3><p>Select a component to highlight everything upstream and downstream of it, and see its “blast radius” — what breaks if it goes down.</p></div>
+        <div class="card"><div class="card-icon" style="background:#d97706">5</div><h3>Estimate latency &amp; cost</h3><p>The slowest (critical) path gives an end-to-end latency estimate; replicas × unit cost gives a monthly infrastructure estimate.</p></div>
+        <div class="card"><div class="card-icon" style="background:#db2777">6</div><h3>Export &amp; share</h3><p>Export as Mermaid (for GitHub, Notion, Confluence, docs-as-code) or as a standalone SVG image. Save/open designs as JSON.</p></div>
+      </div>
+      <p class="muted">Who it's for: ML / platform engineers sizing an inference stack, backend developers designing a RAG feature, architects preparing a design review, and teams documenting what they already run.</p>
+    </div>
+  </section>
+
+  <section id="howto" class="docs alt">
+    <div class="docs-inner">
+      <h2>How to use this tool</h2>
+      <ol class="steps">
+        <li><strong>Start from a template or a blank canvas.</strong> Use the <em>Templates…</em> menu (e.g. <em>RAG chatbot</em>) to get a working example, or <em>Blank canvas</em> to start fresh.</li>
+        <li><strong>Add components.</strong> Drag an item from the <em>Components</em> list on the left onto the canvas, or simply click it. Use the search box to filter.</li>
+        <li><strong>Connect them.</strong> Drag from the small circle on the right edge of a component onto another component. The arrow means “calls / sends data to”. Alternatively select a component, then <kbd>Shift</kbd>+click the target.</li>
+        <li><strong>Describe each piece.</strong> Click a component to edit it in the right-hand <em>Inspector</em>: name, capacity per replica (requests/second), latency (ms), number of replicas, monthly cost per replica, and — for caches — the hit rate.</li>
+        <li><strong>Describe each connection.</strong> Click an arrow to set its label (e.g. “top-5 context”), its type (<em>synchronous</em>, <em>async</em> or <em>telemetry</em>) and <em>calls per request</em> (e.g. an agent that calls the LLM 3 times).</li>
+        <li><strong>Set the traffic.</strong> Enter the expected requests per second in the toolbar's <em>Traffic</em> box. Watch the utilisation bars, red/amber components and the <em>Analysis</em> panel update live.</li>
+        <li><strong>Fix the bottlenecks.</strong> Read the <em>Findings</em> list: add replicas, put a cache in front of the LLM, move work to an async queue, or add monitoring until the design is green.</li>
+        <li><strong>Export.</strong> Click <em>Export Mermaid</em> to copy or download Mermaid code, or <em>Export SVG</em> to download an image. Use <em>Save</em> to keep an editable JSON copy (your work is also auto-saved in this browser).</li>
+      </ol>
+
+      <h3>Canvas controls &amp; shortcuts</h3>
+      <table class="shortcuts">
+        <tr><td>Pan</td><td>Drag the empty canvas background</td></tr>
+        <tr><td>Zoom</td><td>Mouse wheel / trackpad, or the − + buttons</td></tr>
+        <tr><td>Fit everything on screen</td><td><kbd>F</kbd> or <em>Fit</em></td></tr>
+        <tr><td>Connect two components</td><td>Drag from the right-side handle, or select one and <kbd>Shift</kbd>+click another</td></tr>
+        <tr><td>Delete selection</td><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td></tr>
+        <tr><td>Duplicate component</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td></tr>
+        <tr><td>Undo / redo</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>)</td></tr>
+        <tr><td>Deselect / cancel</td><td><kbd>Esc</kbd></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="model" class="docs">
+    <div class="docs-inner">
+      <h2>How the analysis works</h2>
+      <div class="model-grid">
+        <div>
+          <h3>Traffic propagation</h3>
+          <ul>
+            <li>Traffic enters at <em>Client / Users</em> nodes (or, if there are none, at components with no incoming connections) and is split evenly between them.</li>
+            <li>Every component forwards the traffic it receives to each component it calls, multiplied by the connection's <em>calls per request</em>.</li>
+            <li>A <strong>Cache</strong> forwards only its misses: <code>load × (1 − hit rate)</code>.</li>
+            <li>A <strong>Load Balancer</strong> splits its traffic evenly across its targets.</li>
+            <li><strong>Telemetry</strong> links send events to monitoring but never carry user traffic further.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Bottlenecks</h3>
+          <ul>
+            <li><code>utilisation = load ÷ (capacity per replica × replicas)</code></li>
+            <li>≥ 75% → amber (near capacity), &gt; 100% → red (overloaded; requests will queue or fail).</li>
+            <li>The component with the highest utilisation is the <strong>primary bottleneck</strong>; <code>max sustainable traffic = traffic ÷ highest utilisation</code>.</li>
+            <li>Single points of failure (1 replica on the request path), cycles, missing monitoring, missing caches and disconnected parts are also reported.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Latency</h3>
+          <ul>
+            <li>Only <strong>synchronous</strong> calls add to user-facing latency; async work runs off the request path.</li>
+            <li>A chain of calls adds up; parallel branches take the slowest one. The slowest chain is the <strong>critical path</strong> (purple).</li>
+            <li>With a cache on the path, an average is also shown: <code>hit × latency-to-cache + miss × full latency</code>.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Limits of the model</h3>
+          <ul>
+            <li>This is a back-of-the-envelope planning model, not a load test. Use measured numbers from your own benchmarks where you can.</li>
+            <li>Latency shown is unloaded latency; real latency rises sharply as utilisation approaches 100%.</li>
+            <li>For LLMs, capacity depends heavily on prompt/output length, batching and hardware — treat the defaults as placeholders.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">AI System Architecture Designer</footer>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head"><h3 id="modal-title"></h3><button class="icon-btn" id="modal-close" aria-label="Close">✕</button></div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
