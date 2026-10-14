@@ -1,0 +1,10 @@
+{
+  "name": "ai-system-architecture-designer",
+  "version": "1.0.0",
+  "description": "Assemble AI system components (LLM, vector DB, retriever, reranker, API, cache, GPU, monitoring), analyse data flow and bottlenecks, export Mermaid or SVG.",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
